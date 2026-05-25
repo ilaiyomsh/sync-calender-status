@@ -1,0 +1,13 @@
+{
+  "name": "sync-calender-status",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Daily health dashboard for the Calendar Sync monday.com app, generated from Axiom logs.",
+  "scripts": {
+    "generate": "node scripts/generate.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

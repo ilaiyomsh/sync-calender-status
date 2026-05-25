@@ -1,0 +1,45 @@
+name: Refresh dashboard
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 06:00 UTC (~09:00 Israel)
+  workflow_dispatch:        # manual run from Actions tab
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Generate dashboard
+        env:
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          AXIOM_ORG_ID: ${{ vars.AXIOM_ORG_ID || 'twyst-jffk' }}
+          AXIOM_DATASET: ${{ vars.AXIOM_DATASET || 'calendar-sync' }}
+        run: node scripts/generate.mjs
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
