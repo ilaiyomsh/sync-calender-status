@@ -243,7 +243,7 @@ export default function (d) {
   </div>
 
   <footer>
-    Data source: <a href="https://app.axiom.co/${esc(ORG_PLACEHOLDER)}" target="_blank">Axiom · calendar-sync</a> · Generated <span id="ts2"></span> ·
+    Data source: <a href="https://app.axiom.co/${esc(process.env.AXIOM_ORG_ID || 'twyst-jffk')}" target="_blank">Axiom · calendar-sync</a> · Generated <span id="ts2"></span> ·
     Auto-refreshes daily via GitHub Actions
   </footer>
 </div>
@@ -275,5 +275,5 @@ document.getElementById('ts').textContent=t;
 document.getElementById('ts2').textContent=t;
 </script>
 </body>
-</html>`.replace('ORG_PLACEHOLDER', process.env.AXIOM_ORG_ID || 'twyst-jffk');
+</html>`;
 }
