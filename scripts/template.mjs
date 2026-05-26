@@ -122,12 +122,49 @@ export default function (d) {
   a{color:var(--brand);text-decoration:none;font-weight:600}
   code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:var(--card-soft);padding:1px 6px;border-radius:5px;border:1px solid var(--line)}
 
-  /* Mobile tweaks */
+  /* table wrapper — horizontal scroll on narrow screens */
+  .t-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+  .t-scroll table.t{min-width:380px}
+
+  /* Mobile (≤680px) */
   @media (max-width:680px){
-    .wrap{padding:18px 14px 40px}
-    h1{font-size:18px}
-    .kpi-col .v{font-size:24px}
-    .chart-wrap{height:220px}
+    .wrap{padding:14px 12px 36px}
+    header{margin-bottom:20px;gap:10px}
+    h1{font-size:17px}
+    .sub{font-size:11.5px}
+    .logo{width:40px;height:40px;font-size:20px;border-radius:11px}
+    .status-pill{padding:7px 12px;font-size:12px;width:100%;justify-content:center}
+    .section{margin:22px 0 10px;gap:10px}
+    .section h2{font-size:15px}
+    .section .ico{width:30px;height:30px;font-size:15px}
+    .section .desc{display:none}
+    .card{padding:14px;border-radius:12px}
+    .grid{gap:10px}
+    .kpi .label{font-size:10px;min-height:24px;letter-spacing:.05em}
+    .kpi-cols{padding:8px 0 2px;margin-top:4px}
+    .kpi-cols .div{height:32px}
+    .kpi-col .t{font-size:9px;margin-bottom:2px}
+    .kpi-col .v{font-size:22px}
+    .kpi .delta{font-size:11px;margin-top:6px;padding-top:6px}
+    .chart-wrap{height:200px}
+    .chart-wrap.tall{height:230px}
+    /* tables: scroll horizontally */
+    table.t th,table.t td{padding:8px 9px;font-size:12px}
+    table.t th{font-size:9.5px}
+    .bar{height:5px;margin-right:6px}
+    /* errors: tighter spacing, smaller count pill */
+    .err-row{padding:11px 0;gap:10px}
+    .err-row .msg b{font-size:12.5px}
+    .err-row .msg .cause{font-size:10.5px}
+    .err-row .c{font-size:18px;min-width:44px;padding:5px 8px}
+    /* footer */
+    footer{font-size:11px;margin-top:28px}
+  }
+  /* Extra-narrow (≤380px) — iPhone SE etc */
+  @media (max-width:380px){
+    .kpi-col .v{font-size:20px}
+    .kpi-cols{grid-template-columns:1fr 1px 1fr}
+    h1{font-size:16px}
   }
 </style>
 </head>
@@ -194,12 +231,12 @@ export default function (d) {
       <div class="hint">אירועי OAuth connect שנרשמו</div>
       ${d.connects.length === 0
         ? '<div style="padding:16px;color:var(--ink-mute);text-align:center">אין connects בחלון זה</div>'
-        : `<table class="t"><thead><tr><th>תאריך / שעה (UTC)</th><th>Provider</th><th>User ID</th></tr></thead><tbody>
+        : `<div class="t-scroll"><table class="t"><thead><tr><th>תאריך / שעה (UTC)</th><th>Provider</th><th>User ID</th></tr></thead><tbody>
             ${d.connects.map(c => {
               const cls = c.prv==='monday'?'mo':c.prv==='google'?'g':c.prv==='microsoft'?'m':'info';
               return `<tr><td>${esc(c.time)}</td><td><span class="badge ${cls}">${esc(c.prv)}</span></td><td><code>${esc(c.usr)}</code></td></tr>`;
             }).join('')}
-          </tbody></table>`
+          </tbody></table></div>`
       }
     </div>
   </div>
@@ -224,13 +261,13 @@ export default function (d) {
   <div class="grid g-2">
     <div class="card">
       <h3>פעילות לפי חשבון · 7 ימים</h3><div class="hint">monday.com accounts</div>
-      <table class="t"><thead><tr><th>Account ID</th><th>Users</th><th>Objects</th><th>Configs</th><th>שורות לוג</th></tr></thead>
-      <tbody>${d.acc.map(a => `<tr><td><code>${esc(a.id)}</code></td><td class="num">${a.users}</td><td class="num">${a.objects}</td><td class="num">${a.configs}</td><td class="num">${n(a.n)} <span class="bar" style="width:${Math.round(a.n/d.maxAccN*120)}px"></span></td></tr>`).join('')}</tbody></table>
+      <div class="t-scroll"><table class="t"><thead><tr><th>Account ID</th><th>Users</th><th>Objects</th><th>Configs</th><th>שורות לוג</th></tr></thead>
+      <tbody>${d.acc.map(a => `<tr><td><code>${esc(a.id)}</code></td><td class="num">${a.users}</td><td class="num">${a.objects}</td><td class="num">${a.configs}</td><td class="num">${n(a.n)} <span class="bar" style="width:${Math.round(a.n/d.maxAccN*120)}px"></span></td></tr>`).join('')}</tbody></table></div>
     </div>
     <div class="card">
       <h3>פעילות לפי מופע (Custom Object) · 7 ימים</h3><div class="hint">פילוח לפי <code>objectId</code></div>
-      <table class="t"><thead><tr><th>Object ID</th><th>Users</th><th>Configs</th><th>שורות לוג</th></tr></thead>
-      <tbody>${d.obj.map(o => `<tr><td><code>${esc(o.id)}</code></td><td class="num">${o.users}</td><td class="num">${o.configs}</td><td class="num">${n(o.n)} <span class="bar" style="width:${Math.round(o.n/d.maxObjN*140)}px"></span></td></tr>`).join('')}</tbody></table>
+      <div class="t-scroll"><table class="t"><thead><tr><th>Object ID</th><th>Users</th><th>Configs</th><th>שורות לוג</th></tr></thead>
+      <tbody>${d.obj.map(o => `<tr><td><code>${esc(o.id)}</code></td><td class="num">${o.users}</td><td class="num">${o.configs}</td><td class="num">${n(o.n)} <span class="bar" style="width:${Math.round(o.n/d.maxObjN*140)}px"></span></td></tr>`).join('')}</tbody></table></div>
     </div>
   </div>
 
