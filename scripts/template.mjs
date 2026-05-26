@@ -20,13 +20,14 @@ function kpi({tone, label, v24, v7d, delta, t24='24h', t7d='7 ימים'}) {
   </div>`;
 }
 
-export default function (d) {
+export default function (app, d) {
   const ok = statusOK(d);
+  const title = `${app.name || app.slug} · Health Dashboard`;
   return `<!doctype html>
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8" />
-<title>Calendar Sync · Health Dashboard</title>
+<title>${esc(title)}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex,nofollow" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -173,10 +174,13 @@ export default function (d) {
 
   <header>
     <div class="brand-row">
-      <div class="logo">📅</div>
+      <div class="logo">${esc(app.emoji || '📊')}</div>
       <div>
-        <h1>Calendar Sync · Health Dashboard</h1>
-        <div class="sub">monday.com · Account <code>${esc(d.account)}</code> · 24h / 7d · עדכון אחרון: <span id="ts"></span></div>
+        <h1>${esc(app.name || app.slug)} · Health Dashboard</h1>
+        <div class="sub">
+          <a href="../" style="color:var(--ink-soft);font-weight:500">← All apps</a> ·
+          Account <code>${esc(d.account)}</code> · 24h / 7d · עדכון אחרון: <span id="ts"></span>
+        </div>
       </div>
     </div>
     <div class="status-pill ${ok?'ok':'bad'}">
@@ -280,7 +284,7 @@ export default function (d) {
   </div>
 
   <footer>
-    Data source: <a href="https://app.axiom.co/${esc(process.env.AXIOM_ORG_ID || 'twyst-jffk')}" target="_blank">Axiom · calendar-sync</a> · Generated <span id="ts2"></span> ·
+    Data source: <a href="https://app.axiom.co/${esc(d.org || 'twyst-jffk')}" target="_blank">Axiom · ${esc(app.dataset)}</a> · Generated <span id="ts2"></span> ·
     Auto-refreshes daily via GitHub Actions
   </footer>
 </div>
