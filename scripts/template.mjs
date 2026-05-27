@@ -45,13 +45,24 @@ export default function (app, d) {
   .status-pill.ok .dot{background:#10b981;box-shadow:0 0 0 4px #d1fae5}
   .status-pill.bad .dot{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}
 
-  /* toolbar: scope filter + window toggle */
+  /* toolbar: scope filters + window toggle */
   .toolbar{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:26px;flex-wrap:wrap}
-  .scope-pick{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-  .scope-pick label{font-size:12px;font-weight:700;color:var(--ink-mute)}
-  .scope-pick select{appearance:none;border:0;background:transparent;font:inherit;font-weight:700;font-size:13px;color:var(--ink);cursor:pointer;padding-left:18px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2364748b' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:left center}
-  .scope-pick:has(select:disabled){opacity:.5}
-  .scope-pick select:disabled{cursor:not-allowed}
+  .cfilter{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 8px 6px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .cfilter .cflabel{font-size:12px;font-weight:700;color:var(--ink-mute)}
+  /* custom dropdown */
+  .cselect{position:relative}
+  .cstrigger{appearance:none;border:0;background:var(--card-soft);font:inherit;font-weight:700;font-size:13px;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:10px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);transition:border-color .15s,background .15s}
+  .cstrigger:hover{border-color:#c7d2fe}
+  .cstrigger .cschev{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--ink-mute);transition:transform .15s}
+  .cselect.open .cstrigger{border-color:var(--brand);background:#fff}
+  .cselect.open .cschev{transform:rotate(180deg)}
+  .cselect.disabled{opacity:.45;pointer-events:none}
+  .csmenu{position:absolute;top:calc(100% + 6px);right:0;min-width:220px;max-height:300px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px -10px rgba(15,23,42,.3);padding:6px;z-index:60}
+  .csmenu[hidden]{display:none}
+  .csopt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:right;appearance:none;border:0;background:transparent;font:inherit;font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;padding:9px 12px;border-radius:8px}
+  .csopt:hover{background:var(--card-soft)}
+  .csopt.sel{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+  .csopt.sel::after{content:'✓';font-weight:800}
   .toggle{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .toggle button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-weight:700;font-size:13px;padding:8px 18px;border-radius:999px;cursor:pointer;transition:all .15s}
   .toggle button:hover{color:var(--ink)}
@@ -162,18 +173,22 @@ export default function (app, d) {
   </header>
 
   <div class="toolbar">
-    <div class="scope-pick">
-      <label for="accSel">חשבון</label>
-      <select id="accSel">
-        <option value="all">כל החשבונות</option>
-        ${d.accounts.map(a => `<option value="${esc(a.id)}">Account ${esc(a.id)}</option>`).join('')}
-      </select>
+    <div class="cfilter">
+      <span class="cflabel">חשבון</span>
+      <div class="cselect" id="accDrop">
+        <button class="cstrigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="csval">כל החשבונות</span><i class="cschev"></i></button>
+        <div class="csmenu" role="listbox" hidden>
+          <button class="csopt sel" data-val="all">כל החשבונות</button>
+          ${d.accounts.map(a => `<button class="csopt" data-val="${esc(a.id)}">Account ${esc(a.id)}</button>`).join('')}
+        </div>
+      </div>
     </div>
-    <div class="scope-pick">
-      <label for="objSel">מופע</label>
-      <select id="objSel" disabled>
-        <option value="all">כל המופעים</option>
-      </select>
+    <div class="cfilter">
+      <span class="cflabel">מופע</span>
+      <div class="cselect disabled" id="objDrop">
+        <button class="cstrigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="csval">כל המופעים</span><i class="cschev"></i></button>
+        <div class="csmenu" role="listbox" hidden></div>
+      </div>
     </div>
     <div class="toggle" role="group" aria-label="time window">
       <button data-win="24h">24 שעות אחרונות</button>
@@ -311,8 +326,8 @@ function renderCharts(W) {
 }
 
 let curAcc = 'all', curObj = 'all', curWin = '7d';
-const accSel = document.getElementById('accSel');
-const objSel = document.getElementById('objSel');
+const accDrop = document.getElementById('accDrop');
+const objDrop = document.getElementById('objDrop');
 
 function scopeKey() {
   if (curAcc === 'all') return 'all';
@@ -324,19 +339,46 @@ function render() {
   document.getElementById('content').innerHTML = buildContent(W, curWin);
   renderCharts(W);
 }
-// Repopulate the instance dropdown for the selected account.
+
+// Custom dropdown wiring. onPick(value, label) fires on selection.
+function wireDrop(root, onPick) {
+  const trigger = root.querySelector('.cstrigger');
+  const menu = root.querySelector('.csmenu');
+  const valEl = root.querySelector('.csval');
+  function close() { root.classList.remove('open'); menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); }
+  function open() {
+    if (root.classList.contains('disabled')) return;
+    document.querySelectorAll('.cselect.open').forEach(o => { if (o !== root) { o.classList.remove('open'); o.querySelector('.csmenu').hidden = true; } });
+    root.classList.add('open'); menu.hidden = false; trigger.setAttribute('aria-expanded', 'true');
+  }
+  trigger.addEventListener('click', e => { e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+  menu.addEventListener('click', e => {
+    const opt = e.target.closest('.csopt');
+    if (!opt) return;
+    menu.querySelectorAll('.csopt').forEach(o => o.classList.toggle('sel', o === opt));
+    valEl.textContent = opt.textContent;
+    close();
+    onPick(opt.dataset.val, opt.textContent);
+  });
+  return { close, setValueLabel: (t) => { valEl.textContent = t; } };
+}
+
+// Rebuild the instance dropdown's options for the selected account.
 function syncObjOptions() {
   const acc = DATA.accounts.find(a => a.id === curAcc);
   const insts = acc ? acc.instances : [];
-  objSel.innerHTML = '<option value="all">כל המופעים</option>' +
-    insts.map(id => '<option value="' + esc(id) + '">Instance ' + esc(id) + '</option>').join('');
-  objSel.disabled = (curAcc === 'all' || insts.length === 0);
+  const menu = objDrop.querySelector('.csmenu');
+  menu.innerHTML = '<button class="csopt sel" data-val="all">כל המופעים</button>' +
+    insts.map(id => '<button class="csopt" data-val="' + esc(id) + '">Instance ' + esc(id) + '</button>').join('');
+  objDrop.classList.toggle('disabled', curAcc === 'all' || insts.length === 0);
   curObj = 'all';
-  objSel.value = 'all';
+  objDrop.querySelector('.csval').textContent = 'כל המופעים';
 }
 
-accSel.addEventListener('change', e => { curAcc = e.target.value; syncObjOptions(); render(); });
-objSel.addEventListener('change', e => { curObj = e.target.value; render(); });
+wireDrop(accDrop, (val) => { curAcc = val; syncObjOptions(); render(); });
+wireDrop(objDrop, (val) => { curObj = val; render(); });
+document.addEventListener('click', () => document.querySelectorAll('.cselect.open').forEach(o => { o.classList.remove('open'); o.querySelector('.csmenu').hidden = true; }));
+
 document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => {
   curWin = b.dataset.win;
   document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('active', x.dataset.win === curWin));
