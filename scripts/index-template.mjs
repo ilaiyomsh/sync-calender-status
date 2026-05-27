@@ -17,9 +17,11 @@ function appCard(r) {
     </a>`;
   }
   const d = r.data;
-  const ok = d.counters.err24 === 0 && d.counters.warn24 === 0;
-  const tone = ok ? 'ok' : (d.counters.err24 > 0 ? 'err' : 'warn');
-  const statusText = ok ? 'OK' : `${d.counters.err24 || d.counters.warn24} alerts`;
+  const w24 = d.windows['24h'];
+  const w7d = d.windows['7d'];
+  const ok = w24.counters.err === 0 && w24.counters.warn === 0;
+  const tone = ok ? 'ok' : (w24.counters.err > 0 ? 'err' : 'warn');
+  const statusText = ok ? 'OK' : `${w24.counters.err || w24.counters.warn} alerts`;
   return `
     <a class="app-card" href="${esc(app.slug)}/">
       <div class="emoji">${esc(app.emoji || '📊')}</div>
@@ -27,9 +29,9 @@ function appCard(r) {
         <div class="name">${esc(app.name || app.slug)}</div>
         <div class="desc">${esc(app.description || app.dataset)}</div>
         <div class="metrics">
-          <span><b>${n(d.s24.syncs)}</b> syncs 24h</span>
-          <span><b>${n(d.s7d.syncs)}</b> syncs 7d</span>
-          <span><b>${n(d.counters.err24)}</b> errors 24h</span>
+          <span><b>${n(w24.sync.syncs)}</b> syncs 24h</span>
+          <span><b>${n(w7d.sync.syncs)}</b> syncs 7d</span>
+          <span><b>${n(w24.counters.err)}</b> errors 24h</span>
         </div>
       </div>
       <div class="status ${tone}">${esc(statusText)}</div>
@@ -38,7 +40,7 @@ function appCard(r) {
 
 export default function (results) {
   const ts = new Date().toISOString();
-  const okCount = results.filter(r => r.ok && r.data.counters.err24 === 0 && r.data.counters.warn24 === 0).length;
+  const okCount = results.filter(r => r.ok && r.data.windows['24h'].counters.err === 0 && r.data.windows['24h'].counters.warn === 0).length;
   const failCount = results.filter(r => !r.ok).length;
   const total = results.length;
   return `<!doctype html>
