@@ -50,6 +50,8 @@ export default function (app, d) {
   .scope-pick{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .scope-pick label{font-size:12px;font-weight:700;color:var(--ink-mute)}
   .scope-pick select{appearance:none;border:0;background:transparent;font:inherit;font-weight:700;font-size:13px;color:var(--ink);cursor:pointer;padding-left:18px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2364748b' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:left center}
+  .scope-pick:has(select:disabled){opacity:.5}
+  .scope-pick select:disabled{cursor:not-allowed}
   .toggle{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .toggle button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-weight:700;font-size:13px;padding:8px 18px;border-radius:999px;cursor:pointer;transition:all .15s}
   .toggle button:hover{color:var(--ink)}
@@ -161,9 +163,16 @@ export default function (app, d) {
 
   <div class="toolbar">
     <div class="scope-pick">
-      <label for="scope">סינון</label>
-      <select id="scope">
-        ${d.scopes.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('')}
+      <label for="accSel">חשבון</label>
+      <select id="accSel">
+        <option value="all">כל החשבונות</option>
+        ${d.accounts.map(a => `<option value="${esc(a.id)}">Account ${esc(a.id)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="scope-pick">
+      <label for="objSel">מופע</label>
+      <select id="objSel" disabled>
+        <option value="all">כל המופעים</option>
       </select>
     </div>
     <div class="toggle" role="group" aria-label="time window">
@@ -181,7 +190,7 @@ export default function (app, d) {
 </div>
 
 <script>
-const DATA = ${JSON.stringify({ providers: d.providers, scopeData: d.scopeData, generatedAt: d.generatedAt })};
+const DATA = ${JSON.stringify({ providers: d.providers, scopeData: d.scopeData, accounts: d.accounts, generatedAt: d.generatedAt })};
 const PRV_COLORS = ${JSON.stringify(PRV_COLORS)};
 const PROVIDERS = DATA.providers;
 
@@ -301,20 +310,40 @@ function renderCharts(W) {
   });
 }
 
-let curScope = 'all', curWin = '7d';
+let curAcc = 'all', curObj = 'all', curWin = '7d';
+const accSel = document.getElementById('accSel');
+const objSel = document.getElementById('objSel');
+
+function scopeKey() {
+  if (curAcc === 'all') return 'all';
+  if (curObj === 'all') return 'acc:' + curAcc;
+  return 'obj:' + curObj;
+}
 function render() {
-  const W = (DATA.scopeData[curScope] || DATA.scopeData['all'])[curWin];
+  const W = (DATA.scopeData[scopeKey()] || DATA.scopeData['all'])[curWin];
   document.getElementById('content').innerHTML = buildContent(W, curWin);
   renderCharts(W);
 }
+// Repopulate the instance dropdown for the selected account.
+function syncObjOptions() {
+  const acc = DATA.accounts.find(a => a.id === curAcc);
+  const insts = acc ? acc.instances : [];
+  objSel.innerHTML = '<option value="all">כל המופעים</option>' +
+    insts.map(id => '<option value="' + esc(id) + '">Instance ' + esc(id) + '</option>').join('');
+  objSel.disabled = (curAcc === 'all' || insts.length === 0);
+  curObj = 'all';
+  objSel.value = 'all';
+}
 
-document.getElementById('scope').addEventListener('change', e => { curScope = e.target.value; render(); });
+accSel.addEventListener('change', e => { curAcc = e.target.value; syncObjOptions(); render(); });
+objSel.addEventListener('change', e => { curObj = e.target.value; render(); });
 document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => {
   curWin = b.dataset.win;
   document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('active', x.dataset.win === curWin));
   render();
 }));
 
+syncObjOptions();
 render();
 const t = new Date(DATA.generatedAt).toLocaleString('he-IL');
 document.getElementById('ts').textContent = t;

@@ -156,18 +156,30 @@ export async function runQueries(app, token) {
   const q = (s) => s.replaceAll('DATASET', `['${DATASET}']`);
   const ctx = { q, token, ORG, providers };
 
-  // 1. Discover accounts + instances over 7d to build the scope list.
-  const [accRows, objRows] = await Promise.all([
+  // 1. Discover accounts and the (account → instance) pairs over 7d.
+  const [accRows, pairRows] = await Promise.all([
     apl(q(`DATASET | where _time > ago(7d) and isnotnull(acc) | summarize n=count() by acc | top ${MAX_ACCOUNTS} by n`), token, ORG),
-    apl(q(`DATASET | where _time > ago(7d) and isnotnull(obj) | summarize n=count() by obj | top ${MAX_INSTANCES} by n`), token, ORG),
+    apl(q(`DATASET | where _time > ago(7d) and isnotnull(acc) and isnotnull(obj) | summarize n=count() by acc, obj | top ${MAX_ACCOUNTS * MAX_INSTANCES} by n`), token, ORG),
   ]);
   const accIds = accRows.map(r => r.acc).filter(Boolean);
-  const objIds = objRows.map(r => r.obj).filter(Boolean);
 
-  // 2. Build scopes: all + per account + per instance.
-  const scopes = [{ key: 'all', label: 'כל החשבונות והמופעים', kind: 'all' }];
-  for (const id of accIds) scopes.push({ key: `acc:${id}`, label: `Account ${id}`, kind: 'acc', id });
-  for (const id of objIds) scopes.push({ key: `obj:${id}`, label: `Instance ${id}`, kind: 'obj', id });
+  // account → ordered instance ids (capped per account)
+  const instById = new Map(accIds.map(id => [id, []]));
+  for (const row of pairRows) {
+    if (!row.acc || !row.obj) continue;
+    if (!instById.has(row.acc)) instById.set(row.acc, []);
+    const list = instById.get(row.acc);
+    if (list.length < MAX_INSTANCES && !list.includes(row.obj)) list.push(row.obj);
+  }
+  const objIds = [...new Set(pairRows.map(r => r.obj).filter(Boolean))];
+
+  // accounts structure drives the cascading UI dropdowns.
+  const accounts = accIds.map(id => ({ id, instances: instById.get(id) || [] }));
+
+  // 2. Scope datasets keyed all / acc:<id> / obj:<id> (obj implies its account).
+  const scopes = [{ key: 'all', kind: 'all' }];
+  for (const id of accIds) scopes.push({ key: `acc:${id}`, kind: 'acc', id });
+  for (const id of objIds) scopes.push({ key: `obj:${id}`, kind: 'obj', id });
 
   const filterFor = (s) =>
     s.kind === 'acc' ? ` and acc == ${lit(s.id)}` :
@@ -191,7 +203,7 @@ export async function runQueries(app, token) {
     org: ORG,
     providers,
     account,
-    scopes: scopes.map(({ key, label }) => ({ key, label })),
+    accounts,   // [{ id, instances:[objId,…] }] — drives the two cascading filters
     scopeData,
   };
 }
