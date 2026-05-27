@@ -17,8 +17,8 @@ function appCard(r) {
     </a>`;
   }
   const d = r.data;
-  const w24 = d.windows['24h'];
-  const w7d = d.windows['7d'];
+  const w24 = d.scopeData['all']['24h'];
+  const w7d = d.scopeData['all']['7d'];
   const ok = w24.counters.err === 0 && w24.counters.warn === 0;
   const tone = ok ? 'ok' : (w24.counters.err > 0 ? 'err' : 'warn');
   const statusText = ok ? 'OK' : `${w24.counters.err || w24.counters.warn} alerts`;
@@ -40,7 +40,7 @@ function appCard(r) {
 
 export default function (results) {
   const ts = new Date().toISOString();
-  const okCount = results.filter(r => r.ok && r.data.windows['24h'].counters.err === 0 && r.data.windows['24h'].counters.warn === 0).length;
+  const okCount = results.filter(r => r.ok && r.data.scopeData['all']['24h'].counters.err === 0 && r.data.scopeData['all']['24h'].counters.warn === 0).length;
   const failCount = results.filter(r => !r.ok).length;
   const total = results.length;
   return `<!doctype html>

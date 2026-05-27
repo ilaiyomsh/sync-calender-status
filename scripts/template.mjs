@@ -1,61 +1,16 @@
-// HTML template — returns full document string for the `data` object built by
-// generate.mjs. Data carries BOTH windows (d.windows['24h'] / ['7d']); a top
-// toggle switches between them entirely client-side.
+// HTML template. The server emits a static shell + the full `data` object
+// (all scopes × both windows) as embedded JSON. A client-side render(scope,
+// window) builds the content area, so the account/instance filter and the
+// 24h/7d toggle both switch instantly with no re-query.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const n = (x) => Number(x || 0).toLocaleString('en-US');
 
 const PRV_COLORS = { google: '#4285f4', microsoft: '#14b8a6', monday: '#ff3d57', outlook: '#0078d4' };
-const prvColor = (p) => PRV_COLORS[p] || '#64748b';
-const prvLabel = (p) => p.charAt(0).toUpperCase() + p.slice(1);
-
-// KPI with a value + delta per window. Window-specific spans toggle via body class.
-function kpi({ tone, label, v24, v7d, delta24 = '', delta7 = '' }) {
-  return `
-  <div class="card kpi ${tone || ''}">
-    <div class="label">${label}</div>
-    <div class="kpi-big"><span class="w w24">${n(v24)}</span><span class="w w7d">${n(v7d)}</span></div>
-    <div class="delta"><span class="w w24">${delta24 || '&nbsp;'}</span><span class="w w7d">${delta7 || '&nbsp;'}</span></div>
-  </div>`;
-}
-
-// Per-window provider delta string e.g. "Google 24 · Microsoft 1"
-function prvDelta(win, providers, field) {
-  return providers.map(p => `${prvLabel(p)} ${win.sync[p]?.[field] ?? 0}`).join(' · ');
-}
-
-function connectsTable(connects) {
-  if (!connects.length) return '<div style="padding:16px;color:var(--ink-mute);text-align:center">אין connects בחלון זה</div>';
-  return `<div class="t-scroll"><table class="t"><thead><tr><th>תאריך / שעה (UTC)</th><th>Provider</th><th>User ID</th></tr></thead><tbody>
-    ${connects.map(c => {
-      const cls = c.prv === 'monday' ? 'mo' : c.prv === 'google' ? 'g' : c.prv === 'microsoft' ? 'm' : 'info';
-      return `<tr><td>${esc(c.time)}</td><td><span class="badge ${cls}">${esc(c.prv)}</span></td><td><code>${esc(c.usr)}</code></td></tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-}
-
-function errListBlock(errList) {
-  if (!errList.length) return '<div style="padding:16px;color:var(--ink-mute);text-align:center">אין שגיאות בחלון זה ✅</div>';
-  return errList.map(e => `<div class="err-row"><div class="msg"><b>${esc(e.msg)}</b><span class="cause">${esc(e.cause)}</span></div><div class="c ${e.sev}">${n(e.count)}</div></div>`).join('');
-}
-
-function accTable(acc, maxN) {
-  if (!acc.length) return '<div style="padding:16px;color:var(--ink-mute);text-align:center">אין נתונים בחלון זה</div>';
-  return `<div class="t-scroll"><table class="t"><thead><tr><th>Account ID</th><th>Users</th><th>Objects</th><th>Configs</th><th>שורות לוג</th></tr></thead>
-  <tbody>${acc.map(a => `<tr><td><code>${esc(a.id)}</code></td><td class="num">${a.users}</td><td class="num">${a.objects}</td><td class="num">${a.configs}</td><td class="num">${n(a.n)} <span class="bar" style="width:${Math.round(a.n / maxN * 120)}px"></span></td></tr>`).join('')}</tbody></table></div>`;
-}
-
-function objTable(obj, maxN) {
-  if (!obj.length) return '<div style="padding:16px;color:var(--ink-mute);text-align:center">אין נתונים בחלון זה</div>';
-  return `<div class="t-scroll"><table class="t"><thead><tr><th>Object ID</th><th>Users</th><th>Configs</th><th>שורות לוג</th></tr></thead>
-  <tbody>${obj.map(o => `<tr><td><code>${esc(o.id)}</code></td><td class="num">${o.users}</td><td class="num">${o.configs}</td><td class="num">${n(o.n)} <span class="bar" style="width:${Math.round(o.n / maxN * 140)}px"></span></td></tr>`).join('')}</tbody></table></div>`;
-}
 
 export default function (app, d) {
-  const providers = d.providers || ['google', 'microsoft'];
-  const w24 = d.windows['24h'];
-  const w7d = d.windows['7d'];
-  const ok = w24.counters.err === 0 && w24.counters.warn === 0;
   const title = `${app.name || app.slug} · Health Dashboard`;
+  // status pill reflects the "all" scope, 24h window
+  const all24 = d.scopeData['all']?.['24h'] || { counters: { err: 0, warn: 0 } };
+  const ok = all24.counters.err === 0 && all24.counters.warn === 0;
 
   return `<!doctype html>
 <html lang="he" dir="rtl">
@@ -66,19 +21,18 @@ export default function (app, d) {
 <meta name="robots" content="noindex,nofollow" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  :root {
+  :root{
     --bg:#f5f6fb;--card:#ffffff;--card-soft:#f8fafc;
     --ink:#0f172a;--ink-soft:#64748b;--ink-mute:#94a3b8;
     --line:#e5e7eb;--line-soft:#f1f5f9;
     --brand:#6366f1;--brand-2:#8b5cf6;
     --ok:#10b981;--warn:#f59e0b;--err:#ef4444;
-    --google:#4285f4;--microsoft:#14b8a6;--monday:#ff3d57;
     --r:14px;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;line-height:1.45}
   .wrap{max-width:1280px;margin:0 auto;padding:28px 20px 60px}
-  header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px;flex-wrap:wrap}
+  header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px;flex-wrap:wrap}
   .brand-row{display:flex;align-items:center;gap:14px}
   .logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:grid;place-items:center;color:#fff;font-size:22px;box-shadow:0 10px 30px -8px rgba(99,102,241,.5)}
   h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.02em}
@@ -91,24 +45,20 @@ export default function (app, d) {
   .status-pill.ok .dot{background:#10b981;box-shadow:0 0 0 4px #d1fae5}
   .status-pill.bad .dot{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}
 
-  /* Window toggle */
-  .toolbar{display:flex;align-items:center;justify-content:center;margin-bottom:26px}
+  /* toolbar: scope filter + window toggle */
+  .toolbar{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:26px;flex-wrap:wrap}
+  .scope-pick{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .scope-pick label{font-size:12px;font-weight:700;color:var(--ink-mute)}
+  .scope-pick select{appearance:none;border:0;background:transparent;font:inherit;font-weight:700;font-size:13px;color:var(--ink);cursor:pointer;padding-left:18px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2364748b' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:left center}
   .toggle{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-  .toggle button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-weight:700;font-size:13px;padding:8px 20px;border-radius:999px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:7px}
+  .toggle button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-weight:700;font-size:13px;padding:8px 18px;border-radius:999px;cursor:pointer;transition:all .15s}
   .toggle button:hover{color:var(--ink)}
   .toggle button.active{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 6px 16px -6px rgba(99,102,241,.5)}
-
-  /* window-scoped spans — toggled by body class */
-  .w{display:none}
-  body.view-24h .w24{display:inline}
-  body.view-7d  .w7d{display:inline}
-  body.view-24h .only-7d,body.view-7d .only-24h{display:none}
 
   .section{margin:32px 0 14px;display:flex;align-items:center;gap:12px}
   .section .ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .section h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
   .section .desc{margin-right:auto;color:var(--ink-mute);font-size:12px}
-  .win-label{font-weight:700;color:var(--brand)}
 
   .grid{display:grid;gap:14px}
   .g-2{grid-template-columns:repeat(2,1fr)}
@@ -159,45 +109,38 @@ export default function (app, d) {
   .err-row .c{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;min-width:54px;text-align:center;padding:6px 12px;border-radius:8px}
   .err-row .c.err{color:#b91c1c;background:#fee2e2}
   .err-row .c.warn{color:#b45309;background:#fef3c7}
+  .empty{padding:16px;color:var(--ink-mute);text-align:center}
 
   footer{margin-top:40px;text-align:center;color:var(--ink-mute);font-size:12px;padding-top:20px;border-top:1px solid var(--line)}
   a{color:var(--brand);text-decoration:none;font-weight:600}
   code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:var(--card-soft);padding:1px 6px;border-radius:5px;border:1px solid var(--line)}
-
   .t-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
   .t-scroll table.t{min-width:380px}
 
   @media (max-width:680px){
     .wrap{padding:14px 12px 36px}
-    header{margin-bottom:16px;gap:10px}
-    h1{font-size:17px}
-    .sub{font-size:11.5px}
+    header{margin-bottom:14px;gap:10px}
+    h1{font-size:17px}.sub{font-size:11.5px}
     .logo{width:40px;height:40px;font-size:20px;border-radius:11px}
     .status-pill{padding:7px 12px;font-size:12px;width:100%;justify-content:center}
-    .toolbar{margin-bottom:18px}
-    .toggle button{padding:8px 18px}
+    .toolbar{margin-bottom:18px;gap:10px}
+    .scope-pick,.toggle{width:100%;justify-content:center}
     .section{margin:22px 0 10px;gap:10px}
-    .section h2{font-size:15px}
-    .section .ico{width:30px;height:30px;font-size:15px}
+    .section h2{font-size:15px}.section .ico{width:30px;height:30px;font-size:15px}
     .section .desc{display:none}
-    .card{padding:14px;border-radius:12px}
-    .grid{gap:10px}
+    .card{padding:14px;border-radius:12px}.grid{gap:10px}
     .kpi .label{font-size:10px;min-height:24px;letter-spacing:.05em}
     .kpi-big{font-size:34px;margin:8px 0 6px}
     .kpi .delta{font-size:11px;padding-top:6px;min-height:26px}
     .chart-wrap{height:220px}
-    table.t th,table.t td{padding:8px 9px;font-size:12px}
-    table.t th{font-size:9.5px}
-    .err-row{padding:11px 0;gap:10px}
-    .err-row .msg b{font-size:12.5px}
-    .err-row .msg .cause{font-size:10.5px}
+    table.t th,table.t td{padding:8px 9px;font-size:12px}table.t th{font-size:9.5px}
     .err-row .c{font-size:18px;min-width:44px;padding:5px 8px}
     footer{font-size:11px;margin-top:28px}
   }
   @media (max-width:380px){.kpi-big{font-size:30px}h1{font-size:16px}}
 </style>
 </head>
-<body class="view-7d">
+<body>
 <div class="wrap">
 
   <header>
@@ -212,100 +155,24 @@ export default function (app, d) {
       </div>
     </div>
     <div class="status-pill ${ok ? 'ok' : 'bad'}">
-      <span class="dot"></span>${ok ? 'System operational · 0 errors in 24h' : `${w24.counters.err} errors in 24h`}
+      <span class="dot"></span>${ok ? 'System operational · 0 errors in 24h' : `${all24.counters.err} errors in 24h`}
     </div>
   </header>
 
   <div class="toolbar">
+    <div class="scope-pick">
+      <label for="scope">סינון</label>
+      <select id="scope">
+        ${d.scopes.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('')}
+      </select>
+    </div>
     <div class="toggle" role="group" aria-label="time window">
       <button data-win="24h">24 שעות אחרונות</button>
       <button data-win="7d" class="active">7 ימים אחרונים</button>
     </div>
   </div>
 
-  <!-- סנכרונים -->
-  <div class="section"><div class="ico">🔄</div><h2>סנכרונים</h2><div class="desc">sync_done · <span class="win-label w w24">24 שעות</span><span class="win-label w w7d">7 ימים</span></div></div>
-  <div class="grid g-5">
-    ${kpi({ tone: 'brand', label: 'סך ריצות סנכרון', v24: w24.sync.syncs, v7d: w7d.sync.syncs, delta24: prvDelta(w24, providers, 'syncs'), delta7: prvDelta(w7d, providers, 'syncs') })}
-    ${kpi({ tone: 'ok', label: 'פריטים נוצרו ➕', v24: w24.sync.created, v7d: w7d.sync.created, delta24: prvDelta(w24, providers, 'created'), delta7: prvDelta(w7d, providers, 'created') })}
-    ${kpi({ tone: 'sky', label: 'פריטים עודכנו ✏️', v24: w24.sync.updated, v7d: w7d.sync.updated, delta24: prvDelta(w24, providers, 'updated'), delta7: prvDelta(w7d, providers, 'updated') })}
-    ${kpi({ tone: 'pink', label: 'פריטים נמחקו 🗑', v24: w24.sync.deleted, v7d: w7d.sync.deleted, delta24: prvDelta(w24, providers, 'deleted'), delta7: prvDelta(w7d, providers, 'deleted') })}
-    ${kpi({ tone: 'slate', label: 'דולגו (RSVP·all-day·past)', v24: w24.sync.skipped, v7d: w7d.sync.skipped, delta24: 'התנהגות צפויה', delta7: 'התנהגות צפויה' })}
-  </div>
-
-  <div class="grid g-2" style="margin-top:14px">
-    <div class="card"><h3>תוצאות סנכרון</h3><div class="hint">פריטים שטופלו פר תוצאה</div><div class="chart-wrap"><canvas id="cSync"></canvas></div></div>
-    <div class="card"><h3>Webhooks שהתקבלו</h3><div class="hint"><span class="w w24">פר שעה</span><span class="w w7d">פר יום</span> · message=<code>webhook_received</code></div><div class="chart-wrap"><canvas id="cHooks"></canvas></div></div>
-  </div>
-
-  <!-- חידושי טוקנים -->
-  <div class="section"><div class="ico">🔑</div><h2>חידושי טוקנים &amp; מנויי-Push</h2><div class="desc">cron יומי</div></div>
-  <div class="grid g-3">
-    ${kpi({ tone: 'sky', label: 'Subscriptions renewed', v24: w24.counters.subsRenewed, v7d: w7d.counters.subsRenewed, delta24: 'cron @ 08:00 UTC', delta7: 'cron @ 08:00 UTC' })}
-    ${kpi({ tone: w7d.counters.tokenFail === 0 ? 'ok' : 'err', label: 'Token refresh failures', v24: w24.counters.tokenFail, v7d: w7d.counters.tokenFail, delta24: w24.counters.tokenFail === 0 ? 'אפס כשלים ✅' : 'יש כשלים', delta7: w7d.counters.tokenFail === 0 ? 'אפס כשלים ✅' : 'יש כשלים' })}
-    <div class="card" style="background:#fefce8;border-color:#fde68a">
-      <h3 style="color:#854d0e">💡 הערה</h3>
-      <div style="font-size:12.5px;line-height:1.6;color:#713f12;margin-top:6px">
-        רענון <b>Access Tokens</b> מתבצע בכל סנכרון אך <b>נרשם רק בכשל</b>.
-        הספירה היא של חידושי מנויי-Push בלבד.
-      </div>
-    </div>
-  </div>
-
-  <!-- עדכוני קונפיגורציה -->
-  <div class="section"><div class="ico">⚙️</div><h2>עדכוני קונפיגורציה</h2><div class="desc">SPA admin actions</div></div>
-  <div class="grid g-4">
-    ${kpi({ label: 'Setup updates', v24: w24.counters.policy, v7d: w7d.counters.policy, delta24: 'owner שינה לוח / mapping', delta7: 'owner שינה לוח / mapping' })}
-    ${kpi({ label: 'Conditions updates', v24: w24.counters.cond, v7d: w7d.counters.cond, delta24: 'user שינה rules', delta7: 'user שינה rules' })}
-    ${kpi({ label: 'שינויי configs נוספים', v24: w24.counters.cfgOther, v7d: w7d.counters.cfgOther, delta24: 'enabled / paused / disconnected', delta7: 'enabled / paused / disconnected' })}
-    ${kpi({ label: 'App installs', v24: w24.counters.install, v7d: w7d.counters.install, delta24: '', delta7: '' })}
-  </div>
-
-  <!-- כניסות חדשות -->
-  <div class="section"><div class="ico">🆕</div><h2>כניסות חדשות</h2><div class="desc">OAuth connects</div></div>
-  <div class="grid g-3">
-    ${kpi({ tone: 'pink', label: 'סך OAuth connects', v24: w24.counters.oauth, v7d: w7d.counters.oauth, delta24: `${new Set(w24.connects.map(c => c.usr)).size} משתמשים שונים`, delta7: `${new Set(w7d.connects.map(c => c.usr)).size} משתמשים שונים` })}
-    <div class="card" style="grid-column:span 2">
-      <h3>פירוט connects</h3>
-      <div class="hint">אירועי OAuth connect שנרשמו בחלון הנבחר</div>
-      <div class="w w24">${connectsTable(w24.connects)}</div>
-      <div class="w w7d">${connectsTable(w7d.connects)}</div>
-    </div>
-  </div>
-
-  <!-- שגיאות -->
-  <div class="section"><div class="ico">${w7d.counters.err + w7d.counters.warn === 0 ? '✅' : '❌'}</div><h2>שגיאות &amp; אזהרות</h2><div class="desc">level=error / level=warn</div></div>
-  <div class="grid g-3">
-    <div class="card kpi w w24 ${w24.counters.err === 0 ? 'ok' : 'err'}"><div class="label">Errors (level=error)</div><div class="kpi-big">${n(w24.counters.err)}</div><div class="delta">${w24.counters.err === 0 ? 'ירוק לחלוטין ✅' : `${w24.incidents} incidents ייחודיים`}</div></div>
-    <div class="card kpi w w7d ${w7d.counters.err === 0 ? 'ok' : 'err'}"><div class="label">Errors (level=error)</div><div class="kpi-big">${n(w7d.counters.err)}</div><div class="delta">${w7d.counters.err === 0 ? 'ירוק לחלוטין ✅' : `${w7d.incidents} incidents ייחודיים · ${w7d.incidentTypes} סוגים`}</div></div>
-
-    ${kpi({ tone: w7d.counters.warn === 0 ? 'ok' : 'warn', label: 'Warnings (level=warn)', v24: w24.counters.warn, v7d: w7d.counters.warn, delta24: 'אזהרות', delta7: 'אזהרות' })}
-
-    <div class="card kpi w w24 warn"><div class="label">Incidents ייחודיים</div><div class="kpi-big">${n(w24.incidents)}</div><div class="delta">${w24.incidentTypes} סוגים · לאחר dedupe</div></div>
-    <div class="card kpi w w7d warn"><div class="label">Incidents ייחודיים</div><div class="kpi-big">${n(w7d.incidents)}</div><div class="delta">${w7d.incidentTypes} סוגים · לאחר dedupe</div></div>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <h3>פירוט שגיאות &amp; אזהרות</h3>
-    <div class="hint">קיבוץ לפי <code>tag</code> + <code>cause</code> · חלון נבחר</div>
-    <div class="w w24">${errListBlock(w24.errList)}</div>
-    <div class="w w7d">${errListBlock(w7d.errList)}</div>
-  </div>
-
-  <!-- חשבונות -->
-  <div class="section"><div class="ico">👥</div><h2>חשבונות &amp; משתמשים</h2><div class="desc">פילוח לפי <code>acc</code> ו-<code>obj</code></div></div>
-  <div class="grid g-2">
-    <div class="card">
-      <h3>פעילות לפי חשבון</h3><div class="hint">monday.com accounts · חלון נבחר</div>
-      <div class="w w24">${accTable(w24.acc, w24.maxAccN)}</div>
-      <div class="w w7d">${accTable(w7d.acc, w7d.maxAccN)}</div>
-    </div>
-    <div class="card">
-      <h3>פעילות לפי מופע (Custom Object)</h3><div class="hint">פילוח לפי <code>objectId</code> · חלון נבחר</div>
-      <div class="w w24">${objTable(w24.obj, w24.maxObjN)}</div>
-      <div class="w w7d">${objTable(w7d.obj, w7d.maxObjN)}</div>
-    </div>
-  </div>
+  <div id="content"></div>
 
   <footer>
     Data source: <a href="https://app.axiom.co/${esc(d.org || 'twyst-jffk')}" target="_blank">Axiom · ${esc(app.dataset)}</a> · Generated <span id="ts2"></span> ·
@@ -314,72 +181,142 @@ export default function (app, d) {
 </div>
 
 <script>
-const PROVIDERS = ${JSON.stringify(providers)};
+const DATA = ${JSON.stringify({ providers: d.providers, scopeData: d.scopeData, generatedAt: d.generatedAt })};
 const PRV_COLORS = ${JSON.stringify(PRV_COLORS)};
-const WINDOWS = ${JSON.stringify({
-  '24h': { sync: w24.sync, hooks: w24.hooks },
-  '7d': { sync: w7d.sync, hooks: w7d.hooks },
-})};
-const GENERATED = ${JSON.stringify(d.generatedAt)};
+const PROVIDERS = DATA.providers;
 
 Chart.defaults.font.family = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 Chart.defaults.font.size = 12;
 Chart.defaults.color = '#64748b';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = (x) => Number(x || 0).toLocaleString('en-US');
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const color = (p) => PRV_COLORS[p] || '#64748b';
+const prvDelta = (W, field) => PROVIDERS.map(p => cap(p) + ' ' + (W.sync[p] ? W.sync[p][field] : 0)).join(' · ');
+
+function kpi({ tone, label, value, delta }) {
+  return '<div class="card kpi ' + (tone||'') + '">' +
+    '<div class="label">' + label + '</div>' +
+    '<div class="kpi-big">' + n(value) + '</div>' +
+    '<div class="delta">' + (delta || '&nbsp;') + '</div></div>';
+}
+
+function connectsTable(connects) {
+  if (!connects.length) return '<div class="empty">אין connects בחלון זה</div>';
+  return '<div class="t-scroll"><table class="t"><thead><tr><th>תאריך / שעה (UTC)</th><th>Provider</th><th>User ID</th></tr></thead><tbody>' +
+    connects.map(c => {
+      const cls = c.prv==='monday'?'mo':c.prv==='google'?'g':c.prv==='microsoft'?'m':'info';
+      return '<tr><td>' + esc(c.time) + '</td><td><span class="badge ' + cls + '">' + esc(c.prv) + '</span></td><td><code>' + esc(c.usr) + '</code></td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function errBlock(list) {
+  if (!list.length) return '<div class="empty">אין שגיאות בחלון זה ✅</div>';
+  return list.map(e => '<div class="err-row"><div class="msg"><b>' + esc(e.msg) + '</b><span class="cause">' + esc(e.cause) + '</span></div><div class="c ' + e.sev + '">' + n(e.count) + '</div></div>').join('');
+}
+
+function accTable(acc, maxN) {
+  if (!acc.length) return '<div class="empty">אין נתונים בחלון זה</div>';
+  return '<div class="t-scroll"><table class="t"><thead><tr><th>Account ID</th><th>Users</th><th>Objects</th><th>Configs</th><th>שורות לוג</th></tr></thead><tbody>' +
+    acc.map(a => '<tr><td><code>' + esc(a.id) + '</code></td><td class="num">' + a.users + '</td><td class="num">' + a.objects + '</td><td class="num">' + a.configs + '</td><td class="num">' + n(a.n) + ' <span class="bar" style="width:' + Math.round(a.n/maxN*120) + 'px"></span></td></tr>').join('') +
+    '</tbody></table></div>';
+}
+
+function objTable(obj, maxN) {
+  if (!obj.length) return '<div class="empty">אין נתונים בחלון זה</div>';
+  return '<div class="t-scroll"><table class="t"><thead><tr><th>Object ID</th><th>Users</th><th>Configs</th><th>שורות לוג</th></tr></thead><tbody>' +
+    obj.map(o => '<tr><td><code>' + esc(o.id) + '</code></td><td class="num">' + o.users + '</td><td class="num">' + o.configs + '</td><td class="num">' + n(o.n) + ' <span class="bar" style="width:' + Math.round(o.n/maxN*140) + 'px"></span></td></tr>').join('') +
+    '</tbody></table></div>';
+}
+
+const winLabel = (win) => win === '24h' ? '24 שעות' : '7 ימים';
+
+function buildContent(W, win) {
+  const winTxt = winLabel(win);
+  return [
+    // סנכרונים
+    '<div class="section"><div class="ico">🔄</div><h2>סנכרונים</h2><div class="desc">sync_done · ' + winTxt + '</div></div>',
+    '<div class="grid g-5">',
+      kpi({tone:'brand',label:'סך ריצות סנכרון',value:W.sync.syncs,delta:prvDelta(W,'syncs')}),
+      kpi({tone:'ok',label:'פריטים נוצרו ➕',value:W.sync.created,delta:prvDelta(W,'created')}),
+      kpi({tone:'sky',label:'פריטים עודכנו ✏️',value:W.sync.updated,delta:prvDelta(W,'updated')}),
+      kpi({tone:'pink',label:'פריטים נמחקו 🗑',value:W.sync.deleted,delta:prvDelta(W,'deleted')}),
+      kpi({tone:'slate',label:'דולגו (RSVP·all-day·past)',value:W.sync.skipped,delta:'התנהגות צפויה'}),
+    '</div>',
+    '<div class="grid g-2" style="margin-top:14px">',
+      '<div class="card"><h3>תוצאות סנכרון</h3><div class="hint">פריטים שטופלו פר תוצאה</div><div class="chart-wrap"><canvas id="cSync"></canvas></div></div>',
+      '<div class="card"><h3>Webhooks שהתקבלו</h3><div class="hint">' + (win==='24h'?'פר שעה':'פר יום') + ' · message=<code>webhook_received</code></div><div class="chart-wrap"><canvas id="cHooks"></canvas></div></div>',
+    '</div>',
+    // טוקנים
+    '<div class="section"><div class="ico">🔑</div><h2>חידושי טוקנים &amp; מנויי-Push</h2><div class="desc">cron יומי</div></div>',
+    '<div class="grid g-3">',
+      kpi({tone:'sky',label:'Subscriptions renewed',value:W.counters.subsRenewed,delta:'cron @ 08:00 UTC'}),
+      kpi({tone:W.counters.tokenFail===0?'ok':'err',label:'Token refresh failures',value:W.counters.tokenFail,delta:W.counters.tokenFail===0?'אפס כשלים ✅':'יש כשלים'}),
+      '<div class="card" style="background:#fefce8;border-color:#fde68a"><h3 style="color:#854d0e">💡 הערה</h3><div style="font-size:12.5px;line-height:1.6;color:#713f12;margin-top:6px">רענון <b>Access Tokens</b> מתבצע בכל סנכרון אך <b>נרשם רק בכשל</b>. הספירה היא של חידושי מנויי-Push בלבד.</div></div>',
+    '</div>',
+    // קונפיגורציה
+    '<div class="section"><div class="ico">⚙️</div><h2>עדכוני קונפיגורציה</h2><div class="desc">SPA admin actions</div></div>',
+    '<div class="grid g-4">',
+      kpi({label:'Setup updates',value:W.counters.policy,delta:'owner שינה לוח / mapping'}),
+      kpi({label:'Conditions updates',value:W.counters.cond,delta:'user שינה rules'}),
+      kpi({label:'שינויי configs נוספים',value:W.counters.cfgOther,delta:'enabled / paused / disconnected'}),
+      kpi({label:'App installs',value:W.counters.install,delta:''}),
+    '</div>',
+    // OAuth
+    '<div class="section"><div class="ico">🆕</div><h2>כניסות חדשות</h2><div class="desc">OAuth connects</div></div>',
+    '<div class="grid g-3">',
+      kpi({tone:'pink',label:'סך OAuth connects',value:W.counters.oauth,delta:(new Set(W.connects.map(c=>c.usr)).size)+' משתמשים שונים'}),
+      '<div class="card" style="grid-column:span 2"><h3>פירוט connects</h3><div class="hint">אירועי OAuth connect · ' + winTxt + '</div>' + connectsTable(W.connects) + '</div>',
+    '</div>',
+    // שגיאות
+    '<div class="section"><div class="ico">' + (W.counters.err+W.counters.warn===0?'✅':'❌') + '</div><h2>שגיאות &amp; אזהרות</h2><div class="desc">level=error / level=warn</div></div>',
+    '<div class="grid g-3">',
+      kpi({tone:W.counters.err===0?'ok':'err',label:'Errors (level=error)',value:W.counters.err,delta:W.counters.err===0?'ירוק לחלוטין ✅':W.incidents+' incidents ייחודיים'}),
+      kpi({tone:W.counters.warn===0?'ok':'warn',label:'Warnings (level=warn)',value:W.counters.warn,delta:'אזהרות'}),
+      kpi({tone:'warn',label:'Incidents ייחודיים',value:W.incidents,delta:W.incidentTypes+' סוגים · לאחר dedupe'}),
+    '</div>',
+    '<div class="card" style="margin-top:14px"><h3>פירוט שגיאות &amp; אזהרות</h3><div class="hint">קיבוץ לפי <code>tag</code> + <code>cause</code> · ' + winTxt + '</div>' + errBlock(W.errList) + '</div>',
+    // חשבונות
+    '<div class="section"><div class="ico">👥</div><h2>חשבונות &amp; משתמשים</h2><div class="desc">פילוח לפי acc ו-obj</div></div>',
+    '<div class="grid g-2">',
+      '<div class="card"><h3>פעילות לפי חשבון</h3><div class="hint">monday.com accounts · ' + winTxt + '</div>' + accTable(W.acc, W.maxAccN) + '</div>',
+      '<div class="card"><h3>פעילות לפי מופע (Custom Object)</h3><div class="hint">פילוח לפי objectId · ' + winTxt + '</div>' + objTable(W.obj, W.maxObjN) + '</div>',
+    '</div>',
+  ].join('');
+}
 
 let syncChart, hooksChart;
-
-function renderCharts(win) {
-  const W = WINDOWS[win];
-  syncChart?.destroy();
-  hooksChart?.destroy();
-
-  // Sync outcomes — grouped bar by provider
+function renderCharts(W) {
+  syncChart?.destroy(); hooksChart?.destroy();
   syncChart = new Chart(document.getElementById('cSync'), {
-    type: 'bar',
-    data: {
-      labels: ['נוצרו', 'עודכנו', 'נמחקו', 'דולגו'],
-      datasets: PROVIDERS.map(p => ({
-        label: cap(p),
-        data: [W.sync[p]?.created || 0, W.sync[p]?.updated || 0, W.sync[p]?.deleted || 0, W.sync[p]?.skipped || 0],
-        backgroundColor: color(p), borderRadius: 8, borderSkipped: false, barPercentage: .7, categoryPercentage: .7,
-      })),
-    },
-    options: { responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 14 } }, tooltip: { padding: 10, backgroundColor: '#0f172a', cornerRadius: 8 } },
-      scales: { x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 12, weight: 600 } } }, y: { grid: { color: '#f1f5f9' }, border: { display: false }, beginAtZero: true, ticks: { precision: 0 } } } },
+    type:'bar',
+    data:{labels:['נוצרו','עודכנו','נמחקו','דולגו'],datasets:PROVIDERS.map(p=>({label:cap(p),data:[W.sync[p]?.created||0,W.sync[p]?.updated||0,W.sync[p]?.deleted||0,W.sync[p]?.skipped||0],backgroundColor:color(p),borderRadius:8,borderSkipped:false,barPercentage:.7,categoryPercentage:.7}))},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,padding:14}},tooltip:{padding:10,backgroundColor:'#0f172a',cornerRadius:8}},scales:{x:{grid:{display:false},border:{display:false},ticks:{font:{size:12,weight:600}}},y:{grid:{color:'#f1f5f9'},border:{display:false},beginAtZero:true,ticks:{precision:0}}}}
   });
-
-  // Webhooks — bar (hourly for 24h, daily for 7d)
   hooksChart = new Chart(document.getElementById('cHooks'), {
-    type: 'bar',
-    data: {
-      labels: W.hooks.labels,
-      datasets: PROVIDERS.map(p => ({
-        label: cap(p),
-        data: W.hooks.datasets[p] || [],
-        backgroundColor: color(p), borderRadius: 6, borderSkipped: false, stack: 's', barPercentage: .7, categoryPercentage: .75,
-      })),
-    },
-    options: { responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 14 } }, tooltip: { padding: 10, backgroundColor: '#0f172a', cornerRadius: 8 } },
-      scales: { x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }, y: { stacked: true, grid: { color: '#f1f5f9' }, border: { display: false }, beginAtZero: true, ticks: { precision: 0 } } } },
+    type:'bar',
+    data:{labels:W.hooks.labels,datasets:PROVIDERS.map(p=>({label:cap(p),data:W.hooks.datasets[p]||[],backgroundColor:color(p),borderRadius:6,borderSkipped:false,stack:'s',barPercentage:.7,categoryPercentage:.75}))},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,padding:14}},tooltip:{padding:10,backgroundColor:'#0f172a',cornerRadius:8}},scales:{x:{stacked:true,grid:{display:false},border:{display:false},ticks:{font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:8}},y:{stacked:true,grid:{color:'#f1f5f9'},border:{display:false},beginAtZero:true,ticks:{precision:0}}}}
   });
 }
 
-let currentWin = '7d';
-function setWindow(win) {
-  currentWin = win;
-  document.body.className = 'view-' + win;
-  document.querySelectorAll('.toggle button').forEach(b => b.classList.toggle('active', b.dataset.win === win));
-  renderCharts(win);
+let curScope = 'all', curWin = '7d';
+function render() {
+  const W = (DATA.scopeData[curScope] || DATA.scopeData['all'])[curWin];
+  document.getElementById('content').innerHTML = buildContent(W, curWin);
+  renderCharts(W);
 }
-document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => setWindow(b.dataset.win)));
 
-setWindow('7d');
+document.getElementById('scope').addEventListener('change', e => { curScope = e.target.value; render(); });
+document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => {
+  curWin = b.dataset.win;
+  document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('active', x.dataset.win === curWin));
+  render();
+}));
 
-const t = new Date(GENERATED).toLocaleString('he-IL');
+render();
+const t = new Date(DATA.generatedAt).toLocaleString('he-IL');
 document.getElementById('ts').textContent = t;
 document.getElementById('ts2').textContent = t;
 </script>
